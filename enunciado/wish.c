@@ -7,12 +7,18 @@
 
 char **paths;
 int pathLen = 1;
+void parseCommand(char *line);
+int wordCount(char *line);
+void selectCommand(char ** words,int count);
+void changeDir(char **words);
+void runCommand(char ** words);
+void addPath(char **words);
 
 static char error_message[25] = "An error has occurred\n";
 
 int main(int argc, char ** argv){
 	char *bin = "/bin";
-	paths = (char**)malloc(2*sizeof(char*));
+	paths = (char**)malloc(3*sizeof(char*));
 	paths[pathLen-1] = bin;
 	char *line;
 	size_t len = 0;
@@ -44,6 +50,7 @@ int main(int argc, char ** argv){
 			parseCommand(line);        	
 			lineSize = getline(&line, &len, file);
 		}
+		exit(0);
 	}
 	
 }
@@ -60,7 +67,7 @@ void parseCommand(char *line){
 					
 	}
     words[i] = NULL;
-    selectCommand(words);
+    selectCommand(words,countWords);
     //execvp(words[0], words);  // run
 }
 
@@ -80,16 +87,20 @@ int wordCount(char *line){
 }
 
 //Selector de comandos
-void selectCommand(char ** words){
+void selectCommand(char ** words,int count){
 	if(strcmp(words[0], "exit") == 0){
-		exit(0);
+		if (count>1){
+			write(STDERR_FILENO, error_message, strlen(error_message));
+		}
+		else exit(0);
 	}
 	else if(strcmp(words[0], "cd") == 0){
 
 		changeDir(words); //funcionando
 	}
 	else if(strcmp(words[0], "path") == 0){
-		// addPath();
+
+		addPath(words);
 	}
 	else{
 		runCommand(words);
@@ -136,8 +147,22 @@ void runCommand(char ** words){
 		}
 		if(flag==0){
 			write(STDERR_FILENO,error_message, strlen(error_message));
-			exit(1);
 		}		
 }
 
-
+void addPath(char **words){
+	if (paths != NULL) free(paths);
+	paths = (char**)malloc(sizeof(char*));
+	char *path_name = NULL;
+	int index = 0;
+	char **p = words;
+	while(*(++p)){
+		path_name = (char*)malloc(strlen(*p)*sizeof(char));
+		stpcpy(path_name, *p);
+		paths[index] = path_name;
+		index++;
+		paths = (char**)realloc(paths, (index+1)*sizeof(char*));
+	}
+	paths[index] = NULL;
+	pathLen=index;
+}
