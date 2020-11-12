@@ -1,0 +1,143 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+
+char **paths;
+int pathLen = 1;
+
+static char error_message[25] = "An error has occurred\n";
+
+int main(int argc, char ** argv){
+	char *bin = "/bin";
+	paths = (char**)malloc(2*sizeof(char*));
+	paths[pathLen-1] = bin;
+	char *line;
+	size_t len = 0;
+	ssize_t lineSize = 0;
+	// char *string,*found;
+	// modo de shell interactivo
+	if(argc == 1){
+		int seguir = 1;
+		// Ciclo principal 
+		while(seguir == 1){
+			printf("wish> ");
+			lineSize = getline(&line, &len, stdin);
+			parseCommand(line);        	
+		}
+	}
+	else// modo batch, recibe un archivo con instrucciones
+	{
+		FILE *file;
+		file = fopen(argv[1], "r");
+		if(file == NULL){
+			write(STDERR_FILENO,error_message, strlen(error_message)*sizeof(char));
+			exit(1);
+		}
+
+		lineSize = getline(&line, &len, file);
+
+		while (lineSize >= 0){
+
+			parseCommand(line);        	
+			lineSize = getline(&line, &len, file);
+		}
+	}
+	
+}
+
+void parseCommand(char *line){
+	int countWords=wordCount(line);
+	char *words[countWords];
+	int length= strlen(line);
+	line[length-1]='\0';
+	char *found;
+	int i = 0;
+	while((found = strsep(&line, " ")) != NULL){
+			words[i++] = found;
+					
+	}
+    words[i] = NULL;
+    selectCommand(words);
+    //execvp(words[0], words);  // run
+}
+
+
+//Cuenta las palabras en la línea ingresada
+int wordCount(char *line){
+	int count = 1;
+	int length= strlen(line);
+
+	for(int i = 1; i<length; i++){
+		if( line[i] != ' ' &&  line[i-1] == ' '){
+			count++;
+		}
+			
+	}
+	return count;
+}
+
+//Selector de comandos
+void selectCommand(char ** words){
+	if(strcmp(words[0], "exit") == 0){
+		exit(0);
+	}
+	else if(strcmp(words[0], "cd") == 0){
+
+		changeDir(words); //funcionando
+	}
+	else if(strcmp(words[0], "path") == 0){
+		// addPath();
+	}
+	else{
+		runCommand(words);
+	}
+
+	// free(items);
+	// numItems = 0;
+}
+
+void changeDir(char **words){
+	if (words[1] != NULL && words[2] == NULL)
+	{
+		int cdSuccess = chdir(words[1]);
+		if (cdSuccess == -1)
+		{
+			write(STDERR_FILENO, error_message, strlen(error_message));
+			return;
+
+		}
+	}
+	else write(STDERR_FILENO, error_message, strlen(error_message));
+	return;
+}
+
+void runCommand(char ** words){
+		int flag=0;
+		for(int i=0;i<pathLen && flag==0;i++){
+
+			int fullPathLen = strlen(paths[i]) + strlen(words[0])+1;
+            char auxpath[fullPathLen];
+			strcpy(auxpath,paths[i]);
+			strcat(auxpath, "/");
+			strcat(auxpath, words[0]);
+			flag =1;
+			int rc = fork();
+			if (rc == 0) {
+				
+				if(execv(auxpath, words)==-1){
+					flag=0;
+				} 		
+			}else{
+			wait(NULL);
+			}
+		}
+		if(flag==0){
+			write(STDERR_FILENO,error_message, strlen(error_message));
+			exit(1);
+		}		
+}
+
+
