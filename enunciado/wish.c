@@ -7,6 +7,8 @@
 
 char **paths;
 int pathLen = 1;
+int exec2 = 0;
+int exec1 = 0;
 void parseCommand(char *line);
 int wordCount(char *line);
 void selectCommand(char **words, int count, int redir);
@@ -15,6 +17,8 @@ void runCommand(char **words);
 void addPath(char **words);
 char **copy_command(int start, int end, char **command);
 void redirExecute(char **words, int index);
+int commandCount(char *line);
+int findRedir(char **words, int len);
 
 static char error_message[25] = "An error has occurred\n";
 
@@ -36,6 +40,9 @@ int main(int argc, char **argv)
 		{
 			printf("wish> ");
 			lineSize = getline(&line, &len, stdin);
+			// findParalel(line,len);
+			// findParalel(line,len);
+
 			parseCommand(line);
 		}
 	}
@@ -66,24 +73,12 @@ int main(int argc, char **argv)
 	}
 }
 
-
-int findRedir(char **words, int len)
-{
-	for (int i = 0; i < len; i++)
-	{
-		if (strcmp(words[i], ">\0") == 0)
-		{
-			return i;
-		}
-	}
-	return 0;
-}
-
-
 void parseCommand(char *line)
 {
 	char *comandos;
-
+	exec2 = 0;
+	exec1 = commandCount(line);
+	int pids[exec1];
 	while ((comandos = strsep(&line, "&")) != NULL)
 	{
 		int countWords = wordCount(comandos);
@@ -116,16 +111,33 @@ void parseCommand(char *line)
 		// printf("%d\n",!(*words[0]));
 		if (aux == 1)
 		{
-			words[i] = NULL;
-			int redir = findRedir(words, i);
+		words[i] = NULL;
+		int redir = findRedir(words, i);
 
+		if(exec1>1){
+			if((pids[exec2++]=fork())==0){
+				selectCommand(words, countWords, redir);
+				exit(0);
+			}
+		
+		}
+		else
+		{
 			selectCommand(words, countWords, redir);
+
+		}
+		
+			
 		}
 	}
-	//execvp(words[0], words);  // run
+	int status;
+	for (size_t i = 0; i < exec2; i++)
+	{
+		waitpid(pids[i], &status, 0);
+	}
+
 }
 
-//Selector de comandos
 void selectCommand(char **words, int count, int redir)
 {
 
@@ -150,96 +162,25 @@ void selectCommand(char **words, int count, int redir)
 	}
 	else
 	{
-
-		if (redir > 0)
+		if (!(*words[0]))
 		{
-			redirExecute(words, redir);
+			write(STDERR_FILENO, error_message, strlen(error_message));
 		}
-
 		else
-			runCommand(words);
+		{
+			if (redir > 0)
+			{
+				redirExecute(words, redir);
+			}
+
+			else
+				runCommand(words);
+		}
 	}
 
 	// free(items);
 	// numItems = 0;
 }
-
-
-void changeDir(char **words)
-{
-	if (words[1] != NULL && words[2] == NULL)
-	{
-		int cdSuccess = chdir(words[1]);
-		if (cdSuccess == -1)
-		{
-			write(STDERR_FILENO, error_message, strlen(error_message));
-			return;
-		}
-	}
-	else
-		write(STDERR_FILENO, error_message, strlen(error_message));
-	return;
-}
-
-
-void runCommand(char **words)
-{
-	int flag = 0;
-	if (!(*words[0]))
-	{
-		flag = 1;
-	}
-
-	for (int i = 0; i < pathLen && flag == 0; i++)
-	{
-
-		int fullPathLen = strlen(paths[i]) + strlen(words[0]) + 1;
-		char auxpath[fullPathLen];
-		strcpy(auxpath, paths[i]);
-		strcat(auxpath, "/");
-		strcat(auxpath, words[0]);
-		flag = 1;
-		int rc = fork();
-		if (rc == 0)
-		{
-
-			if (execv(auxpath, words) == -1)
-			{
-				flag = 0;
-			}
-		}
-		else
-		{
-			wait(NULL);
-		}
-	}
-	if (flag == 0)
-	{
-		write(STDERR_FILENO, error_message, strlen(error_message));
-	}
-}
-
-
-void addPath(char **words)
-{
-	if (paths != NULL)
-		free(paths);
-	paths = (char **)malloc(sizeof(char *));
-	char *path_name = NULL;
-	int index = 0;
-	char **p = words;
-	while (*(++p))
-	{
-		path_name = (char *)malloc(strlen(*p) * sizeof(char));
-		stpcpy(path_name, *p);
-		paths[index] = path_name;
-		index++;
-		paths = (char **)realloc(paths, (index + 1) * sizeof(char *));
-	}
-	paths[index] = NULL;
-	pathLen = index;
-}
-
 
 void redirExecute(char **words, int index)
 {
@@ -262,6 +203,102 @@ void redirExecute(char **words, int index)
 	}
 }
 
+int findRedir(char **words, int len)
+{
+	for (int i = 0; i < len; i++)
+	{
+		if (strcmp(words[i], ">\0") == 0)
+		{
+			return i;
+		}
+	}
+	return 0;
+}
+
+
+void changeDir(char **words)
+{
+	if (words[1] != NULL && words[2] == NULL)
+	{
+		int cdSuccess = chdir(words[1]);
+		if (cdSuccess == -1)
+		{
+			write(STDERR_FILENO, error_message, strlen(error_message));
+			return;
+		}
+	}
+	else
+		write(STDERR_FILENO, error_message, strlen(error_message));
+	return;
+}
+
+void runCommand(char **words)
+{
+	int status = 1;
+
+	for (int i = 0; i < pathLen; i++)
+	{
+
+		int fullPathLen = strlen(paths[i]) + strlen(words[0]) + 1;
+		char auxpath[fullPathLen];
+		strcpy(auxpath, paths[i]);
+		strcat(auxpath, "/");
+		strcat(auxpath, words[0]);
+		if (access(auxpath, X_OK) == 0)
+		{
+
+			int rc = fork();
+			if (rc == 0)
+			{
+				if (execv(auxpath, words) == -1)
+				{
+					exit(1);
+				}
+				else
+				{
+
+					exit(0);
+				}
+			}
+			else
+			{
+				wait(&status);
+				if (status == 0)
+				{
+					break;
+				}
+			}
+		}
+		else{
+			status=1;
+		}
+	}
+
+	if (status == 1)
+	{
+		write(STDERR_FILENO, error_message, strlen(error_message));
+	}
+}
+
+void addPath(char **words)
+{
+	if (paths != NULL)
+		free(paths);
+	paths = (char **)malloc(sizeof(char *));
+	char *path_name = NULL;
+	int index = 0;
+	char **p = words;
+	while (*(++p))
+	{
+		path_name = (char *)malloc(strlen(*p) * sizeof(char));
+		stpcpy(path_name, *p);
+		paths[index] = path_name;
+		index++;
+		paths = (char **)realloc(paths, (index + 1) * sizeof(char *));
+	}
+	paths[index] = NULL;
+	pathLen = index;
+}
 
 char **copy_command(int start, int end, char **command)
 {
@@ -281,6 +318,21 @@ int wordCount(char *line)
 	for (int i = 1; i < length; i++)
 	{
 		if (line[i] != ' ' && line[i - 1] == ' ')
+		{
+			count++;
+		}
+	}
+	return count;
+}
+
+int commandCount(char *line)
+{
+	int count = 1;
+	int length = strlen(line);
+
+	for (int i = 1; i < length; i++)
+	{
+		if (line[i] != '&' && line[i - 1] == '&')
 		{
 			count++;
 		}
