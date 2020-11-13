@@ -36,7 +36,7 @@ int main(int argc, char ** argv){
 			parseCommand(line);        	
 		}
 	}
-	else// modo batch, recibe un archivo con instrucciones
+	else if (argc == 2)// modo batch, recibe un archivo con instrucciones
 	{
 		FILE *file;
 		file = fopen(argv[1], "r");
@@ -54,6 +54,11 @@ int main(int argc, char ** argv){
 		}
 		exit(0);
 	}
+	else
+    {
+        write(STDERR_FILENO, error_message, strlen(error_message));
+        exit(1);
+    }
 	
 }
 
@@ -74,16 +79,35 @@ void parseCommand(char *line){
 	int length= strlen(line);
 
 	line[length-1]='\0';
+	for(int i = 0; i < length; i++){
+		if(line[i] == '\t' || line[i] == '\n')
+			 line[i] = ' ';
+	}	
+	// Eliminar espacios del principio
+	while(*line == ' ')
+		line ++;
+
 	char *found;
 	int i = 0;
+	int aux=0;
 	while((found = strsep(&line, " ")) != NULL){
-			words[i++] = found;
+			// words[i++] = found;
+			if(strlen(found)>0){
+				aux=1;
+				words[i++] = found;
+			}
 					
 	}
-    words[i] = NULL;
-	int redir=findRedir(words,i);
 
-    selectCommand(words,countWords,redir);
+	// printf("%d\n",!(*words[0]));
+	if(aux==1){
+		words[i] = NULL;
+		int redir=findRedir(words,i);
+		
+		selectCommand(words,countWords,redir);
+	}
+
+	
     //execvp(words[0], words);  // run
 }
 
@@ -104,6 +128,7 @@ int wordCount(char *line){
 
 //Selector de comandos
 void selectCommand(char ** words,int count,int redir){
+
 	if(strcmp(words[0], "exit") == 0){
 		if (count>1){
 			write(STDERR_FILENO, error_message, strlen(error_message));
@@ -119,6 +144,7 @@ void selectCommand(char ** words,int count,int redir){
 		addPath(words);
 	}
 	else{
+
 		if(redir>0){
 			redirExecute(words,redir);
 		}
@@ -147,6 +173,10 @@ void changeDir(char **words){
 
 void runCommand(char ** words){
 		int flag=0;
+		if (!(*words[0])) {
+			flag=1;
+		}
+		
 		for(int i=0;i<pathLen && flag==0;i++){
 
 			int fullPathLen = strlen(paths[i]) + strlen(words[0])+1;
